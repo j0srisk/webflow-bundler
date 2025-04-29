@@ -1,6 +1,6 @@
 # webflow-bundler
 
-A CLI tool for bundling, minifying, and cleaning JavaScript/TypeScript code so it can be easily copy-pasted into [Webflow](https://webflow.com/) custom code blocks and pages. This tool is designed to streamline the process of preparing modern JS/TS code for use in Webflow, ensuring compatibility, reduced file size, and easy embedding.
+A Node.js tool for bundling, minifying, and cleaning JavaScript/TypeScript code so it can be easily copy-pasted into [Webflow](https://webflow.com/) custom code blocks and pages. Use it directly in your `package.json` scripts for a seamless workflow. This tool streamlines preparing modern JS/TS for Webflow, ensuring compatibility, reduced file size, and easy embedding.
 
 ## Features
 
@@ -13,30 +13,32 @@ A CLI tool for bundling, minifying, and cleaning JavaScript/TypeScript code so i
 
 ## Installation
 
-Clone the repo and install dependencies:
+Install as a dev dependency:
 
 ```bash
-npm install
+npm install --save-dev webflow-bundler
 ```
 
 ## Usage
 
-By default, the tool bundles all `.js` and `.ts` files in the `src` directory and outputs to `dist/js`.
+The most common way to use `webflow-bundler` is in your `package.json` scripts.
 
-### CLI
+### In package.json
 
-```bash
-webflow-bundler [options]
-```
-
-### package.json
+Add a script:
 
 ```json
 {
   "scripts": {
-    "webflow-bundler": "webflow-bundler [options]"
+    "bundle:webflow": "webflow-bundler --source src --output dist/js --minify --html --drop-console"
   }
 }
+```
+
+Then run:
+
+```bash
+npm run bundle:webflow
 ```
 
 #### Options
@@ -54,6 +56,8 @@ webflow-bundler [options]
 Bundle and minify all files in `src` for Webflow, outputting both pretty and minified HTML-wrapped scripts:
 
 ```bash
+npm run bundle:webflow
+# or, if installed globally
 webflow-bundler --source src --output dist/js --minify --html --drop-console
 ```
 
@@ -63,7 +67,6 @@ webflow-bundler --source src --output dist/js --minify --html --drop-console
 - Outputs both a prettified (formatted) and optionally minified version.
 - If `--html` is set, wraps output in `<script>...</script>` for easy embedding.
 - If `--drop-console` is set, strips all `console.*` calls.
-- Fails fast if any non-JS/TS asset is imported.
 
 ## Output
 
