@@ -25,79 +25,17 @@ async function processFile(
     : outPath.replace(/\.js$/, ".min.js");
   await fs.ensureDir(path.dirname(outPath));
 
-  // Read file content and scan for import statements of non-ts/js assets
-  const code = await fs.readFile(filePath, "utf8");
-  const importRegex = /import\s+[^'"\n]*['"]([^'"\n]+)['"]/g;
-  let match: RegExpExecArray | null;
-  while ((match = importRegex.exec(code)) !== null) {
-    const importPath = match[1];
-    if (!importPath.endsWith(".ts") && !importPath.endsWith(".js")) {
-      // Allow extensionless imports if a .ts or .js file exists at the resolved path
-      const importFullPathTs = path.resolve(
-        path.dirname(filePath),
-        importPath + ".ts"
-      );
-      const importFullPathJs = path.resolve(
-        path.dirname(filePath),
-        importPath + ".js"
-      );
-      const tsExists = await fs.pathExists(importFullPathTs);
-      const jsExists = await fs.pathExists(importFullPathJs);
-      if (!tsExists && !jsExists) {
-        throw new Error(
-          `Error: ${filePath} imports non-ts/js asset: ${importPath} (no .ts or .js file found at ${importFullPathTs} or ${importFullPathJs})`
-        );
-      }
-    }
-  }
-
   // Use esbuild to bundle the file and its dependencies into a single JS file
-  await esbuild.build({
-    entryPoints: [filePath],
-    bundle: true,
-    format: "esm",
-    outfile: outPath,
-    platform: "browser",
-    sourcemap: false,
-    minifySyntax: true,
-    minify: false,
-    treeShaking: true,
-    logLevel: "silent",
-    pure: dropConsole
-      ? [
-          "console.log",
-          "console.error",
-          "console.warn",
-          "console.info",
-          "console.debug",
-        ]
-      : [],
-  });
-
-  // Format output: always write pretty version
-  let js = await fs.readFile(outPath, "utf8");
-  // Remove all esbuild's source file comments (any .ts or .js path) anywhere in the script
-  js = js.replace(/^\/\/[^\n]*\.(ts|js)\n/gm, "");
-  let pretty = await prettier.format(js, { parser: "babel" });
-  if (html) {
-    const htmlWrapped = `<script>\n${pretty}<\/script>\n`;
-    await fs.writeFile(outPath, htmlWrapped, "utf8");
-  } else {
-    await fs.writeFile(outPath, pretty, "utf8");
-  }
-  console.log(`Processed: ${filePath} -> ${outPath}`);
-
-  // If minify, output .min.js as single line
-  if (minify) {
+  try {
     await esbuild.build({
       entryPoints: [filePath],
       bundle: true,
       format: "esm",
-      outfile: minPath,
+      outfile: outPath,
       platform: "browser",
       sourcemap: false,
       minifySyntax: true,
-      minify: true,
+      minify: false,
       treeShaking: true,
       logLevel: "silent",
       pure: dropConsole
@@ -110,6 +48,63 @@ async function processFile(
           ]
         : [],
     });
+  } catch (err) {
+    if (err instanceof Error) {
+      console.warn(`❌ esbuild failed for ${filePath}:`, err.message);
+    } else {
+      console.warn(`❌ esbuild failed for ${filePath}:`, err);
+    }
+    return;
+  }
+
+  // Format output: always write pretty version
+  let js = await fs.readFile(outPath, "utf8");
+  // Remove all esbuild's source file comments (any .ts or .js path) anywhere in the script
+  js = js.replace(/^\/\/[^\n]*\.(ts|js)\n/gm, "");
+  let pretty = await prettier.format(js, { parser: "babel" });
+  if (html) {
+    const htmlWrapped = `<script>\n${pretty}<\/script>\n`;
+    await fs.writeFile(outPath, htmlWrapped, "utf8");
+  } else {
+    await fs.writeFile(outPath, pretty, "utf8");
+  }
+  console.log(`✅ Processed: ${filePath} -> ${outPath}`);
+
+  // If minify, output .min.js as single line
+  if (minify) {
+    try {
+      await esbuild.build({
+        entryPoints: [filePath],
+        bundle: true,
+        format: "esm",
+        outfile: minPath,
+        platform: "browser",
+        sourcemap: false,
+        minifySyntax: true,
+        minify: true,
+        treeShaking: true,
+        logLevel: "silent",
+        pure: dropConsole
+          ? [
+              "console.log",
+              "console.error",
+              "console.warn",
+              "console.info",
+              "console.debug",
+            ]
+          : [],
+      });
+    } catch (err) {
+      if (err instanceof Error) {
+        console.warn(
+          `❌ esbuild (minify) failed for ${filePath}:`,
+          err.message
+        );
+      } else {
+        console.warn(`❌ esbuild (minify) failed for ${filePath}:`, err);
+      }
+      return;
+    }
     let minJs = await fs.readFile(minPath, "utf8");
     // Remove esbuild's source file comment at the top, if present (any .ts or .js path)
     minJs = minJs.replace(/^\/\/[^\n]*\.(ts|js)\n/, "");
@@ -124,7 +119,7 @@ async function processFile(
     } else {
       await fs.writeFile(minPath, minified, "utf8");
     }
-    console.log(`Processed (min): ${filePath} -> ${minPath}`);
+    console.log(`✅ Processed (min): ${filePath} -> ${minPath}`);
   }
 }
 
@@ -135,7 +130,7 @@ export async function main(
   html: boolean = false,
   dropConsole: boolean = false
 ) {
-  console.log(`Processing files in ${srcDir}... with minify=${minify}`);
+  console.log(`🚀 Processing files in ${srcDir}...`);
   await fs.emptyDir(distDir);
   const files = glob
     .sync(`${srcDir}/**/*.{js,ts}`, { nodir: true })
@@ -145,10 +140,23 @@ export async function main(
   );
   results.forEach((result, idx) => {
     if (result.status === "rejected") {
-      console.error(`Failed to process ${files[idx]}:`, result.reason);
+      console.error(`❌ Failed to process ${files[idx]}:`, result.reason);
     }
   });
-  console.log("All files processed.");
+  console.log("🏁 All files processed.");
+
+  // Remove non-js/html files from distDir
+  const allowedExt = html ? [".html", ".min.html"] : [".js", ".min.js"];
+  const distFiles = glob.sync(`${distDir}/**/*`, { nodir: true });
+  await Promise.all(
+    distFiles.map(async (file) => {
+      const ext = path.extname(file);
+      if (!allowedExt.includes(ext)) {
+        await fs.remove(file);
+        console.log(`🧹 Removed non-output file: ${file}`);
+      }
+    })
+  );
 }
 
 // CLI fallback: use defaults if run directly
@@ -156,7 +164,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const defaultSrc = path.resolve(__dirname, "../src");
   const defaultDist = path.resolve(__dirname, "../dist/js");
   main(defaultSrc, defaultDist, false, false, false).catch((err) => {
-    console.error("Error:", err);
+    console.error("❌ Error:", err);
     process.exit(1);
   });
 }

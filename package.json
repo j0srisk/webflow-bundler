@@ -1,6 +1,6 @@
 {
   "name": "webflow-bundler",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Bundle, Minify, and Clean JS/TS files for Webflow",
   "main": "dist/index.js",
   "type": "module",
